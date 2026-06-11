@@ -1,0 +1,17 @@
+# Secrets — never commit
+.odds_api_key
+*.key
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/

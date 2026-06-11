@@ -1,0 +1,34 @@
+{
+  "gameweek": 1,
+  "total_gameweeks": 9,
+  "x2_holding": true,
+  "n_opponents": 11,
+  "matches": [
+    {
+      "id": "match_001",
+      "home": "Brazil",
+      "away": "Serbia",
+      "odds_home": 1.45,
+      "odds_draw": 4.20,
+      "odds_away": 7.50,
+      "total_hint": 2.5,
+      "points_home": 22,
+      "points_draw": 60,
+      "points_away": 95,
+      "field_bets": {"home": 0.82, "draw": 0.11, "away": 0.07}
+    },
+    {
+      "id": "match_002",
+      "home": "Spain",
+      "away": "Croatia",
+      "odds_home": 1.90,
+      "odds_draw": 3.50,
+      "odds_away": 4.20,
+      "total_hint": 2.5,
+      "points_home": 40,
+      "points_draw": 72,
+      "points_away": 78,
+      "field_bets": {"home": 0.55, "draw": 0.25, "away": 0.20}
+    }
+  ]
+}
