@@ -107,6 +107,27 @@ def candidate_scores(mi, cap=0.012):
         if c not in cs: cs.append(c)
     return cs
 
+# Bande morte « erreur de modèle » : fraction de l'EV du pick incumbent SUR LE MATCH qu'un candidat
+# doit dépasser pour le déloger. accept_eps ne couvre que le bruit Monte-Carlo ; le modèle a aussi
+# une erreur (de-margin, rho fixe, bonus rareté non calibré) qui rend un gain d'EV de quelques %
+# indistinguable de zéro. Sans cette marge, l'ascension flippe des pronos déjà posés vers des scores
+# plus rares pour un gain sous le bruit = churn + variance inutile. 6 % ≈ 3 pts sur une EV-match ~50
+# = hyperparamètre conservateur (à re-calibrer sur un back-test EV-réalisée), pas un proxy mesuré.
+MODEL_ERROR_DEADBAND = 0.06
+
+
+def accept_flip(o, best_obj, accept_eps, deadband, anchored_on_incumbent):
+    """Décide si un candidat (objectif `o`) remplace le meilleur courant (`best_obj`).
+
+    Ancré sur le pick incumbent : franchir le bruit MC (`accept_eps`) ET l'erreur de modèle
+    (`deadband`). Une fois l'incumbent délogé : bruit MC + une DEMI-bande résiduelle, pour
+    départager des alternatives quasi-égales sans churn de 2nd ordre (sinon le choix dépendrait
+    de l'ordre d'itération des candidats).
+    """
+    floor = accept_eps + (deadband if anchored_on_incumbent else 0.5 * deadband)
+    return o > best_obj + floor
+
+
 def main():
     raw = sys.stdin.read()
     data = json.loads(raw)
@@ -123,6 +144,9 @@ def main():
     matches = data["matches"]
     pop_override = data.get("popularity_override")
     n_opp = int(data.get("n_opponents", DEFAULT_N_OPP))
+    # Marge d'acceptation des changements, consciente du bruit Monte-Carlo : sur la composante
+    # P(1er) du blend, l'écart-type MC ~ 0.5/sqrt(sims). On n'accepte un changement qu'au-delà.
+    accept_eps = max(1e-9, kappa * 100.0 * (0.5 / (sims ** 0.5)))
     mis = [build_match(m, pop_override) for m in matches]
     nm = len(matches)
 
@@ -216,11 +240,20 @@ def main():
             base_wo = [my_total[s] - contrib_cur[s] for s in range(sims)]
             cands = candidate_scores(mis[mm])
             if cur_pick not in cands: cands.append(cur_pick)
-            best_pick, best_obj, best_arr = None, -1e18, None
+            # Bande morte sur l'EV du pick incumbent SUR CE MATCH (échelle ~40-58) : marge d'erreur
+            # de modèle à franchir pour déloger un prono déjà posé (cf. MODEL_ERROR_DEADBAND).
+            ev_inc_match = sum(contrib_cur) / sims
+            deadband = MODEL_ERROR_DEADBAND * abs(ev_inc_match)
+            # Seed sur le pick COURANT : on ne s'en écarte que si un candidat bat son objectif
+            # au-delà du bruit MC ET de l'erreur de modèle (tant qu'on est encore sur l'incumbent).
+            mt0, wp0 = evaluate(base_wo, mm, cur_pick)
+            best_pick, best_obj = cur_pick, obj(mt0, wp0)
             for cand in cands:
+                if cand == cur_pick:
+                    continue
                 mt, wp = evaluate(base_wo, mm, cand)
                 o = obj(mt, wp)
-                if o > best_obj + 1e-12:
+                if accept_flip(o, best_obj, accept_eps, deadband, best_pick == cur_pick):
                     best_obj, best_pick = o, cand
             if best_pick != cur_pick:
                 mypick[mm] = best_pick; improved = True

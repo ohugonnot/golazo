@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 import model
 import stakes_context as j3_context
 import odds_api
+import optimize_winprob as OW
 
 
 # ---------------------------------------------------------------------------
@@ -260,6 +261,36 @@ class TestOddsApiMatching(unittest.TestCase):
     def test_env_var_key_takes_priority(self):
         with patch.dict(os.environ, {"ODDS_API_KEY": "abc123"}):
             self.assertEqual(odds_api.api_key(), "abc123")
+
+
+class TestAcceptFlipDeadband(unittest.TestCase):
+    """Bande morte anti-churn de l'optimiseur : un candidat doit franchir le bruit MC ET l'erreur
+    de modèle pour déloger un prono déjà posé ; départage sur demi-bande une fois délogé."""
+
+    def setUp(self):
+        self.accept_eps = 0.4
+        self.ev_inc = 55.8
+        self.deadband = OW.MODEL_ERROR_DEADBAND * self.ev_inc   # ~3.35 à 6 %
+
+    def test_sub_noise_gain_does_not_dislodge_incumbent(self):
+        o = self.ev_inc + 2.6   # le flip churn réel (~5 %)
+        self.assertFalse(
+            OW.accept_flip(o, self.ev_inc, self.accept_eps, self.deadband, True),
+            "un gain d'EV ~5 % ne doit pas déloger un prono déjà posé")
+
+    def test_real_gain_dislodges_incumbent(self):
+        o = self.ev_inc + 10.0
+        self.assertTrue(
+            OW.accept_flip(o, self.ev_inc, self.accept_eps, self.deadband, True))
+
+    def test_dislodge_harder_than_alternative_switch(self):
+        base, gain = 50.0, 0.7 * self.deadband
+        self.assertFalse(OW.accept_flip(base + gain, base, self.accept_eps, self.deadband, True))
+        self.assertTrue(OW.accept_flip(base + gain, base, self.accept_eps, self.deadband, False))
+
+    def test_deadband_constant_sane(self):
+        self.assertGreaterEqual(OW.MODEL_ERROR_DEADBAND, 0.03)
+        self.assertLessEqual(OW.MODEL_ERROR_DEADBAND, 0.12)
 
 
 if __name__ == "__main__":
